@@ -1,0 +1,35 @@
+{
+  "name": "simple-db-cache",
+  "version": "0.0.0",
+  "description": "Dirt Simple File Cache based on mtime.",
+  "main": "dist/src/simple-db-cache.js",
+  "types": "src/simple-db-cache.ts",
+  "scripts": {
+    "prepublish": "yarn build",
+    "build": "tsc",
+    "test": "ts-node ./tests/*.ts",
+    "lint": "prettier -c ./src/ && prettier -c ./tests/"
+  },
+  "repository": "git@github.com:thlorenz/simple-db-cache.git",
+  "author": "Thorsten Lorenz <thlorenz@gmx.de>",
+  "license": "MIT",
+  "private": false,
+  "directories": {
+    "dist": "./dist/src"
+  },
+  "dependencies": {
+    "better-sqlite3": "^7.1.2",
+    "debug": "^4.3.1",
+    "supports-color": "^8.1.1",
+    "tslib": "^2.1.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^5.4.1",
+    "@types/debug": "^4.1.5",
+    "@types/tape": "^4.13.0",
+    "prettier": "^2.2.1",
+    "tape": "^5.1.1",
+    "ts-node": "^9.1.1",
+    "typescript": "^4.1.3"
+  }
+}
