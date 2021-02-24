@@ -95,40 +95,74 @@ async function run(t: test.Test, simpleDbCache: SimpleDbCache) {
 test('simple-db-cache: not using memory cache', async (t) => {
   const simpleDbCache = SimpleDbCache.initSync({
     useMemoryCache: false,
-    prehydrateInMemoryCache: false,
+    hydrateMemoryCache: false,
   })
   await run(t, simpleDbCache)
   t.end()
 })
 
-test('simple-db-cache: using memory not prehydrating', async (t) => {
+test('simple-db-cache: using memory not hydrating', async (t) => {
   const simpleDbCache = SimpleDbCache.initSync({
     useMemoryCache: true,
-    prehydrateInMemoryCache: false,
+    hydrateMemoryCache: false,
   })
   await run(t, simpleDbCache)
   t.end()
 })
 
-test('simple-db-cache: using memory and prehydrating', async (t) => {
+test('simple-db-cache: using memory and hydrating + not evicting', async (t) => {
   const simpleDbCache = SimpleDbCache.initSync({
     useMemoryCache: true,
-    prehydrateInMemoryCache: true,
+    hydrateMemoryCache: true,
   })
   await run(t, simpleDbCache)
 
-  // Verify prehydrating works
+  // Verify hydrating works
   simpleDbCache.clearSync()
   await addUpperCase(simpleDbCache, aAAfoo)
   await addUpperCase(simpleDbCache, aAAbar)
 
   const simpleDbCacheFresh = SimpleDbCache.initSync({
     useMemoryCache: true,
-    prehydrateInMemoryCache: true,
+    hydrateMemoryCache: true,
+    evictMemoryOnRead: false,
   })
-  t.ok(simpleDbCacheFresh.inMemory.has(aAAfoo), 'prehydrates aAAfoo')
-  t.ok(simpleDbCacheFresh.inMemory.has(aAAbar), 'prehydrates aAAbar')
-  t.notOk(simpleDbCacheFresh.inMemory.has(aABfoo), 'does not prehydrate aABfoo')
+  t.ok(simpleDbCacheFresh.memoryCache.has(aAAfoo), 'hydrates aAAfoo')
+  t.ok(simpleDbCacheFresh.memoryCache.has(aAAbar), 'hydrates aAAbar')
+  t.notOk(simpleDbCacheFresh.memoryCache.has(aABfoo), 'does not hydrate aABfoo')
+
+  // Verify things stay in memory when we get it
+  t.comment('Getting a/aa/foo')
+  simpleDbCacheFresh.get(aAAfoo)
+  t.ok(simpleDbCacheFresh.memoryCache.has(aAAfoo), 'did not evict aAAfoo')
+  t.ok(simpleDbCacheFresh.memoryCache.has(aAAbar), 'did not evict aAAbar')
+
+  t.end()
+})
+
+test('simple-db-cache: using memory and hydrating + eviciting', async (t) => {
+  const simpleDbCache = SimpleDbCache.initSync({
+    useMemoryCache: true,
+    hydrateMemoryCache: true,
+  })
+  simpleDbCache.clearSync()
+  await addUpperCase(simpleDbCache, aAAfoo)
+  await addUpperCase(simpleDbCache, aAAbar)
+
+  const simpleDbCacheFresh = SimpleDbCache.initSync({
+    useMemoryCache: true,
+    hydrateMemoryCache: true,
+    evictMemoryOnRead: true,
+  })
+  t.ok(simpleDbCacheFresh.memoryCache.has(aAAfoo), 'hydrates aAAfoo')
+  t.ok(simpleDbCacheFresh.memoryCache.has(aAAbar), 'hydrates aAAbar')
+  t.notOk(simpleDbCacheFresh.memoryCache.has(aABfoo), 'does not hydrate aABfoo')
+
+  // Verify things are evicted from memory when we get it
+  t.comment('Getting a/aa/foo')
+  simpleDbCacheFresh.get(aAAfoo)
+  t.notOk(simpleDbCacheFresh.memoryCache.has(aAAfoo), 'did evict aAAfoo')
+  t.ok(simpleDbCacheFresh.memoryCache.has(aAAbar), 'did not evict aAAbar')
 
   t.end()
 })

@@ -28,46 +28,45 @@ const SQL_DROP = `DROP TABLE IF EXISTS file_cache;`
 
 export type SimpleDbCacheOpts = {
   useMemoryCache: boolean
-  prehydrateInMemoryCache: boolean
+  hydrateMemoryCache: boolean
+  evictMemoryOnRead: boolean
   cacheDir: string
 }
 
 export class SimpleDbCache {
   private readonly _db: BetterSqlite3.Database
-  private readonly _inMemory: Map<string, CacheItem> = new Map()
+  private readonly _memoryCache: Map<string, CacheItem> = new Map()
   private constructor(private readonly _opts: SimpleDbCacheOpts) {
     this._db = new BetterSqlite3(
       path.join(this._opts.cacheDir, 'simple-db-cache.sqlite'),
       { verbose: logTrace, fileMustExist: false }
     )
     this._create()
-    if (this._opts.prehydrateInMemoryCache) {
-      this._prehydrateInMemoryCache()
+    if (this._opts.hydrateMemoryCache) {
+      this._hydrateMemoryCache()
     }
   }
 
-  get prehydrated() {
-    return this._opts.prehydrateInMemoryCache
-  }
-
-  get inMemory() {
-    return this._inMemory
+  get memoryCache() {
+    return this._memoryCache
   }
 
   static initSync(args: Partial<SimpleDbCacheOpts> = {}) {
     const cacheDir = args.cacheDir ?? DEFAULT_CACHE_DIR
     const useMemoryCache = args.useMemoryCache ?? true
-    const prehydrateInMemoryCache = args.prehydrateInMemoryCache ?? false
+    const hydrateMemoryCache = args.hydrateMemoryCache ?? false
+    const evictOnMemoryRead = args.evictMemoryOnRead ?? false
 
     const opts: SimpleDbCacheOpts = {
       cacheDir,
       useMemoryCache,
-      prehydrateInMemoryCache,
+      hydrateMemoryCache,
+      evictMemoryOnRead: evictOnMemoryRead,
     }
 
     assert(
-      opts.useMemoryCache || !opts.prehydrateInMemoryCache,
-      'can only prehydrate in memory cache if we use it'
+      opts.useMemoryCache || !opts.hydrateMemoryCache,
+      'can only hydrate in memory cache if we use it'
     )
     fs.mkdirSync(cacheDir, { recursive: true })
     return new SimpleDbCache(opts)
@@ -77,10 +76,15 @@ export class SimpleDbCache {
     const { mtime } = fs.statSync(fullPath)
 
     if (this._opts.useMemoryCache) {
-      const fromMemory = this._inMemory.get(fullPath)
-      if (fromMemory != null && fromMemory.added > mtime) {
-        logDebug('getting %s from memory cache', fullPath)
-        return fromMemory.content
+      const fromMemory = this._memoryCache.get(fullPath)
+      if (fromMemory != null) {
+        if (this._opts.evictMemoryOnRead) {
+          this._memoryCache.delete(fullPath)
+        }
+        if (fromMemory.added > mtime) {
+          logDebug('getting %s from memory cache', fullPath)
+          return fromMemory.content
+        }
       }
     }
 
@@ -88,8 +92,9 @@ export class SimpleDbCache {
     if (fromDb != null && fromDb.added > mtime) {
       logDebug('getting %s from database', fullPath)
 
-      if (this._opts.useMemoryCache) {
-        this._inMemory.set(fullPath, fromDb)
+      // Only add to memory if we plan to read it later which is not the case when evicting
+      if (this._opts.useMemoryCache && !this._opts.evictMemoryOnRead) {
+        this._memoryCache.set(fullPath, fromDb)
       }
       return fromDb.content
     }
@@ -102,7 +107,7 @@ export class SimpleDbCache {
 
     const cacheItem = { content: convertedContent, added: new Date() }
     if (this._opts.useMemoryCache) {
-      this._inMemory.set(origFullPath, cacheItem)
+      this._memoryCache.set(origFullPath, cacheItem)
     }
 
     const stmt = this._db.prepare(
@@ -112,7 +117,7 @@ export class SimpleDbCache {
   }
 
   clearSync() {
-    this._inMemory.clear()
+    this._memoryCache.clear()
     this._db.exec(SQL_DROP).exec(SQL_CREATE)
   }
 
@@ -133,13 +138,13 @@ export class SimpleDbCache {
     return { content, added }
   }
 
-  private _prehydrateInMemoryCache() {
-    logDebug('prehydrating in memory cache')
+  private _hydrateMemoryCache() {
+    logDebug('hydrating in memory cache')
     const stmt = this._db.prepare('SELECT * FROM file_cache')
     const rows: (CacheItem & { file: string })[] = stmt.all()
     for (const { file, content, added: addedStr } of rows) {
       const added = new Date(addedStr)
-      this._inMemory.set(file, { content, added })
+      this._memoryCache.set(file, { content, added })
     }
   }
 }
